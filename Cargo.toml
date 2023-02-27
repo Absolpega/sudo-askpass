@@ -1,0 +1,9 @@
+[package]
+name = "sudo-askpass"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ansi-escapes = "0.1.1"
+colorful = "0.2.2"
+termios = "0.3.3"
