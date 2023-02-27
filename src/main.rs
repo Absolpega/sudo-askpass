@@ -14,8 +14,6 @@ use ansi_escapes;
 use colorful::Colorful;
 //use colorful::Color;
 
-const IS_PASSWORD: bool = true;
-
 // always at least 1
 const SPINNER_OFFSET: usize = 4;
 
@@ -46,6 +44,7 @@ const SPINNER_CHARACTERS: [&str; SPINNER_CHARACTERS_SIZE] = [
 
 const SPINNER_CHARACTER_STOP: &str = "◉";
 const SPINNER_CHARACTER_EMPTY: &str = "○";
+const SPINNER_CHARACTER_SECURE: &str = "○";
 
 #[derive(PartialEq)]
 enum SpinnerWays {
@@ -53,6 +52,7 @@ enum SpinnerWays {
     Stop,
     Forward,
     Backward,
+    Secure,
 }
 
 fn spinner<'a>(tty: &mut File, way: SpinnerWays, iter: &mut Cycle<IntoIter<&str, SPINNER_CHARACTERS_SIZE>>, mut left_offset: u16) {
@@ -70,12 +70,17 @@ fn spinner<'a>(tty: &mut File, way: SpinnerWays, iter: &mut Cycle<IntoIter<&str,
 
     let mut next = iter.next();
 
-    if way == SpinnerWays::Stop {
-        next = Some(SPINNER_CHARACTER_STOP);
-    }
-
-    if way == SpinnerWays::Empty {
-        next = Some(SPINNER_CHARACTER_EMPTY);
+    match way {
+        SpinnerWays::Stop => {
+            next = Some(SPINNER_CHARACTER_STOP);
+        }
+        SpinnerWays::Empty => {
+            next = Some(SPINNER_CHARACTER_EMPTY);
+        }
+        SpinnerWays::Secure => {
+            next = Some(SPINNER_CHARACTER_SECURE);
+        }
+        _ => {}
     }
 
     if next.is_some() {
@@ -90,7 +95,7 @@ fn spinner<'a>(tty: &mut File, way: SpinnerWays, iter: &mut Cycle<IntoIter<&str,
     }
 }
 
-fn read(mut tty: File, password: bool) -> String {
+fn read(mut tty: File, secure: bool) -> String {
     let mut output = String::new();
 
     let mut spinner_characters_iter = SPINNER_CHARACTERS.into_iter().cycle();
@@ -99,35 +104,50 @@ fn read(mut tty: File, password: bool) -> String {
     let mut c = stdin().bytes().next().unwrap().unwrap() as char;
 
     while c != '\n' {
-        match c {
-            // \b is not allowed for some reason
-            // also it returns 127 (7F) on backspace for some reason
-            '\x08' | '\x7F' => {
-                if output.len() > 0 {
-                    if output.pop() != None {
-                        write!(tty, "{}", ansi_escapes::CursorBackward(1)).unwrap();
-                        write!(tty, " ").unwrap();
-                        write!(tty, "{}", ansi_escapes::CursorBackward(1)).unwrap();
-                        spinner(&mut tty, SpinnerWays::Backward, &mut spinner_characters_iter, (SPINNER_OFFSET + output.len()).try_into().unwrap());
+        'labelmatch: {
+            match c {
+                // \b is not allowed for some reason
+                // also it returns 127 (7F) on backspace for some reason
+                '\x08' | '\x7F' => {
+                    if secure {
+                        output.pop();
+                        if output.bytes().last() == None {
+                            spinner(&mut tty, SpinnerWays::Stop, &mut spinner_characters_iter, (SPINNER_OFFSET).try_into().unwrap());
+                        }
+                        break 'labelmatch;
+                    }
+
+                    if output.len() > 0 {
+                        if output.pop() != None {
+                            write!(tty, "{}", ansi_escapes::CursorBackward(1)).unwrap();
+                            write!(tty, " ").unwrap();
+                            write!(tty, "{}", ansi_escapes::CursorBackward(1)).unwrap();
+                            spinner(&mut tty, SpinnerWays::Backward, &mut spinner_characters_iter, (SPINNER_OFFSET + output.len()).try_into().unwrap());
+                        }
+                    }
+
+                    if output.bytes().last() == None {
+                        spinner(&mut tty, SpinnerWays::Stop, &mut spinner_characters_iter, (SPINNER_OFFSET + output.len()).try_into().unwrap());
                     }
                 }
-                if output.bytes().last() == None {
-                    spinner(&mut tty, SpinnerWays::Stop, &mut spinner_characters_iter, (SPINNER_OFFSET + output.len()).try_into().unwrap());
+                c => {
+                    if !secure {
+                        spinner(&mut tty, SpinnerWays::Forward, &mut spinner_characters_iter, (SPINNER_OFFSET + output.len()).try_into().unwrap());
+                        write!(tty, "*").unwrap();
+                    } else {
+                        spinner(&mut tty, SpinnerWays::Secure, &mut spinner_characters_iter, (SPINNER_OFFSET).try_into().unwrap());
+                    }
+                    output.push(c);
                 }
-            }
-            c => {
-                if !password {
-                    write!(tty, "{}", c).unwrap();
-                } else {
-                    write!(tty, "*").unwrap();
-                }
-                output.push(c);
-                spinner(&mut tty, SpinnerWays::Forward, &mut spinner_characters_iter, (SPINNER_OFFSET + output.len()).try_into().unwrap());
             }
         }
         c = stdin().bytes().next().unwrap().unwrap() as char;
     }
-    spinner(&mut tty, SpinnerWays::Empty, &mut spinner_characters_iter, (SPINNER_OFFSET + output.len()).try_into().unwrap());
+
+    if !secure {
+        spinner(&mut tty, SpinnerWays::Empty, &mut spinner_characters_iter, (SPINNER_OFFSET + output.len()).try_into().unwrap());
+    }
+
     write!(tty, "\n").unwrap();
 
     return output;
@@ -143,7 +163,11 @@ fn main() {
 
     write!(tty, "{}", String::from("Enter password < S > ").yellow()).unwrap();
 
-    let string = read(tty, IS_PASSWORD);
+    let mut secure: bool = false;
+    if std::env::args().nth(1) == Some("--secure".to_string()) {
+        secure = true;
+    }
+    let string = read(tty, secure);
 
     write!(stdout(), "{}\n", string).unwrap();
 
