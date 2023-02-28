@@ -1,4 +1,4 @@
-use std::os::fd::AsRawFd;
+use std::os::unix::io::AsRawFd;
 
 use std::array::IntoIter;
 use std::iter::Cycle;
@@ -104,7 +104,7 @@ fn read(mut tty: File, secure: bool) -> String {
     let mut c = stdin().bytes().next().unwrap().unwrap() as char;
 
     while c != '\n' {
-        'labelmatch: {
+        loop {
             match c {
                 // \b is not allowed for some reason
                 // also it returns 127 (7F) on backspace for some reason
@@ -114,7 +114,7 @@ fn read(mut tty: File, secure: bool) -> String {
                         if output.bytes().last() == None {
                             spinner(&mut tty, SpinnerWays::Stop, &mut spinner_characters_iter, (SPINNER_OFFSET).try_into().unwrap());
                         }
-                        break 'labelmatch;
+                        break;
                     }
 
                     if output.len() > 0 {
@@ -140,6 +140,7 @@ fn read(mut tty: File, secure: bool) -> String {
                     output.push(c);
                 }
             }
+            break;
         }
         c = stdin().bytes().next().unwrap().unwrap() as char;
     }
