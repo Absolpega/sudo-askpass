@@ -1,2 +1,2 @@
-# simple-terminal-sudo-askpass
+# sudo askpass
 so sudo prompt doesn't look so boring!
