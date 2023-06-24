@@ -6,7 +6,7 @@ use std::iter::Cycle;
 use std::fs::File;
 
 use termios::*;
-//use std::io;
+
 use std::io::{Write, Read, stdin, stdout};
 
 use ansi_escapes;
@@ -14,8 +14,7 @@ use ansi_escapes;
 use colorful::Colorful;
 //use colorful::Color;
 
-// always at least 1
-const SPINNER_OFFSET: usize = 4;
+use read_char::read_next_char;
 
 fn end(orig_termios: Termios) {
     tcsetattr(stdin().as_raw_fd(), TCSAFLUSH, &orig_termios).unwrap();
@@ -34,124 +33,155 @@ fn raw(raw: &mut Termios) {
     tcsetattr(stdin().as_raw_fd(), TCSAFLUSH, &raw).unwrap();
 }
 
-const SPINNER_CHARACTERS_SIZE: usize = 4;
-const SPINNER_CHARACTERS: [&str; SPINNER_CHARACTERS_SIZE] = [
-    "◜",
-    "◝",
-    "◞",
-    "◟"
+//const SPINNER_CHARACTERS: [&str; SPINNER_CHARACTERS_SIZE] = [
+//    "󰪞",
+//    "󰪟",
+//    "󰪠",
+//    "󰪡",
+//    "󰪢",
+//    "󰪣",
+//    "󰪤",
+//    "󰪥"
+//];
+
+const SPINNER_CHARACTERS: [&str; 24] = [
+    "", // 6
+    "", // 5
+    "", // 4
+    "", // 3
+    "", // 2
+    "", // 1
+    "", // 6
+    "", // 5
+    "", // 4
+    "", // 3
+    "", // 2
+    "", // 1
+    "", // 6
+    "", // 5
+    "", // 4
+    "", // 3
+    "", // 2
+    "", // 1
+    "", // 6
+    "", // 5
+    "", // 4
+    "", // 3
+    "", // 2
+    "", // 1
 ];
 
-const SPINNER_CHARACTER_STOP: &str = "◉";
-const SPINNER_CHARACTER_EMPTY: &str = "○";
-const SPINNER_CHARACTER_SECURE: &str = "○";
+struct Spinner<'a> {
+     characters: Vec<&'a str>,
+     empty: &'a str,
+     secure: &'a str,
+     offset: usize,
+}
 
 #[derive(PartialEq)]
-enum SpinnerWays {
+enum SpinType {
     Empty,
-    Stop,
     Forward,
     Backward,
     Secure,
 }
 
-fn spinner<'a>(tty: &mut File, way: SpinnerWays, iter: &mut Cycle<IntoIter<&str, SPINNER_CHARACTERS_SIZE>>, mut left_offset: u16) {
+fn spin<'a, T>(
+    way: SpinType,
+    tty: &mut File,
+    iter: &mut Cycle<T>,
+    output: &Vec<String>,
+    spinner: &Spinner,
+    ) where T: Clone, T: Iterator<Item = &'a str> {
+
+    //let mut left_offset = (spinner.offset + output.chars().collect::<Vec<_>>().len()).try_into().unwrap();
+    let mut left_offset = (spinner.offset + output.len()).try_into().unwrap();
+
     // due to the -1
     // should just never enter a value that == 1
     if left_offset == 0 {
         left_offset = 1;
     }
 
-    if way == SpinnerWays::Backward {
-        for _ in 1..=SPINNER_CHARACTERS_SIZE-2 {
+    if way == SpinType::Backward {
+        for _ in 1..spinner.characters.len()-1 {
             iter.next();
         }
     }
 
-    let mut next = iter.next();
+    let mut next: Option<&str> = iter.next();
 
     match way {
-        SpinnerWays::Stop => {
-            next = Some(SPINNER_CHARACTER_STOP);
+        SpinType::Empty => {
+            next = Some(spinner.empty);
         }
-        SpinnerWays::Empty => {
-            next = Some(SPINNER_CHARACTER_EMPTY);
-        }
-        SpinnerWays::Secure => {
-            next = Some(SPINNER_CHARACTER_SECURE);
+        SpinType::Secure => {
+            next = Some(spinner.secure);
         }
         _ => {}
     }
 
     if next.is_some() {
         write!(tty, "{}", ansi_escapes::CursorHide).unwrap();
+        write!(tty, "{}", ansi_escapes::CursorSavePosition).unwrap();
         write!(tty, "{}", ansi_escapes::CursorBackward(left_offset)).unwrap();
 
-        // unless SPINNER_CHARACTERS is empty
-        write!(tty, "{}", next.expect("should never panic").cyan()).unwrap();
+        write!(tty, "{}", next.unwrap().cyan()).unwrap();
 
-        write!(tty, "{}", ansi_escapes::CursorForward(left_offset-1)).unwrap();
+        write!(tty, "{}", ansi_escapes::CursorRestorePosition).unwrap();
         write!(tty, "{}", ansi_escapes::CursorShow).unwrap();
     }
 }
 
-fn read(mut tty: File, secure: bool) -> String {
-    let mut output = String::new();
+fn read(
+    mut tty: File,
+    secure: bool,
+    spinner: &Spinner,
+    ) -> String {
+    let mut output: Vec<String> = vec!();
 
-    let mut spinner_characters_iter = SPINNER_CHARACTERS.into_iter().cycle();
-    spinner(&mut tty, SpinnerWays::Empty, &mut spinner_characters_iter, (SPINNER_OFFSET + output.len()).try_into().unwrap());
+    let mut spinner_characters_iter = spinner.characters.clone().into_iter().cycle();
+    spin(SpinType::Empty, &mut tty, &mut spinner_characters_iter, &output, spinner);
 
-    let mut c = stdin().bytes().next().unwrap().unwrap() as char;
+    loop {
+        //match (stdin().bytes().next().unwrap().unwrap() as char).to_string().as_str() {
+        match read_next_char(&mut stdin()).unwrap().to_string().as_str() {
+            "\n" => break,
+            "\x7F" => {
+                // it returns 127 (7F) on backspace for some reason
+                
+                if !secure && output.pop() != None {
+                    write!(tty, "{}", ansi_escapes::CursorBackward(1)).unwrap();
+                    write!(tty, " ").unwrap();
+                    write!(tty, "{}", ansi_escapes::CursorBackward(1)).unwrap();
 
-    while c != '\n' {
-        loop {
-            match c {
-                // \b is not allowed for some reason
-                // also it returns 127 (7F) on backspace for some reason
-                '\x08' | '\x7F' => {
-                    if secure {
-                        output.pop();
-                        if output.bytes().last() == None {
-                            spinner(&mut tty, SpinnerWays::Stop, &mut spinner_characters_iter, (SPINNER_OFFSET).try_into().unwrap());
-                        }
-                        break;
-                    }
-
-                    if output.len() > 0 {
-                        if output.pop() != None {
-                            write!(tty, "{}", ansi_escapes::CursorBackward(1)).unwrap();
-                            write!(tty, " ").unwrap();
-                            write!(tty, "{}", ansi_escapes::CursorBackward(1)).unwrap();
-                            spinner(&mut tty, SpinnerWays::Backward, &mut spinner_characters_iter, (SPINNER_OFFSET + output.len()).try_into().unwrap());
-                        }
-                    }
-
-                    if output.bytes().last() == None {
-                        spinner(&mut tty, SpinnerWays::Stop, &mut spinner_characters_iter, (SPINNER_OFFSET + output.len()).try_into().unwrap());
-                    }
+                    spin(SpinType::Backward, &mut tty, &mut spinner_characters_iter, &output, spinner);
                 }
-                c => {
-                    if !secure {
-                        spinner(&mut tty, SpinnerWays::Forward, &mut spinner_characters_iter, (SPINNER_OFFSET + output.len()).try_into().unwrap());
-                        write!(tty, "*").unwrap();
-                    } else {
-                        spinner(&mut tty, SpinnerWays::Secure, &mut spinner_characters_iter, (SPINNER_OFFSET).try_into().unwrap());
-                    }
-                    output.push(c);
+
+                if output.last() == None {
+                    spin(SpinType::Empty, &mut tty, &mut spinner_characters_iter, &output, spinner);
                 }
+
             }
-            break;
+            character => {
+                if !secure {
+                    spin(SpinType::Forward, &mut tty, &mut spinner_characters_iter, &output, spinner);
+                    write!(tty, "*").unwrap();
+                } else {
+                    spin(SpinType::Secure, &mut tty, &mut spinner_characters_iter, &vec!("".to_string()), spinner);
+                }
+                output.push(character.to_string());
+            }
         }
-        c = stdin().bytes().next().unwrap().unwrap() as char;
     }
 
     if !secure {
-        spinner(&mut tty, SpinnerWays::Empty, &mut spinner_characters_iter, (SPINNER_OFFSET + output.len()).try_into().unwrap());
+        spin(SpinType::Empty, &mut tty, &mut spinner_characters_iter, &output, spinner);
     }
 
     write!(tty, "\n").unwrap();
 
-    return output;
+    return output.join("");
 }
 
 fn main() {
@@ -168,7 +198,15 @@ fn main() {
     if std::env::args().nth(1) == Some("--secure".to_string()) {
         secure = true;
     }
-    let string = read(tty, secure);
+
+    let spinner = Spinner {
+        characters: SPINNER_CHARACTERS.to_vec(),
+        empty: "󱃓",
+        secure: "󰳌",
+        offset: 4,
+    };
+
+    let string = read(tty, secure, &spinner);
 
     write!(stdout(), "{}\n", string).unwrap();
 

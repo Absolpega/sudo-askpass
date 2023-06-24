@@ -6,4 +6,6 @@ edition = "2021"
 [dependencies]
 ansi-escapes = "0.1.1"
 colorful = "0.2.2"
+crossterm = "0.26.1"
+read_char = "0.1.1"
 termios = "0.3.3"
