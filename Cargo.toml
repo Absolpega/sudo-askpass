@@ -1,11 +1,11 @@
 [package]
 name = "sudo-askpass"
-version = "1.1.0"
+version = "2.0.0"
 edition = "2021"
 
 [dependencies]
 ansi-escapes = "0.1.1"
+clap = { version = "4.3.10", features = ["derive"] }
 colorful = "0.2.2"
-crossterm = "0.26.1"
 read_char = "0.1.1"
 termios = "0.3.3"
