@@ -5,15 +5,23 @@ use clap::Parser;
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
+    _prompt: Option<String>,
+
     #[arg(long, default_value_t = false)]
     setup: bool,
 }
 
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Serialize, Deserialize, Clone)]
 pub struct Config {
     secure: bool,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self { secure: false }
+    }
 }
 
 use termios::*;
@@ -141,16 +149,13 @@ fn main() {
         return;
     }
 
-    let config = get_config();
+    let some_config = get_config();
 
-    if config.is_none() {
-        setup::setup();
-        return;
-    }
-
-    let config = config.unwrap();
+    let config = some_config.clone().unwrap_or_default();
 
     let secure = config.secure;
+
+    colored::control::set_override(true);
 
     let mut tty = File::create("/dev/tty").unwrap();
 
@@ -167,6 +172,15 @@ fn main() {
     };
 
     let mut spinner_iter = spinner.characters.clone().into_iter().cycle();
+
+    if some_config.is_none() {
+        writeln!(
+            tty,
+            "sudo-askpass: {}",
+            "Please create a configuration file with `sudo-askpass --setup`".red()
+        )
+        .unwrap();
+    }
 
     write!(tty, "{}", String::from("Enter password < S > ").yellow()).unwrap();
 
