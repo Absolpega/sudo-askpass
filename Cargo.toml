@@ -6,6 +6,10 @@ edition = "2021"
 [dependencies]
 ansi-escapes = "0.1.1"
 clap = { version = "4.3.10", features = ["derive"] }
-colorful = "0.2.2"
+colored = "2.0.3"
+inquire = "0.6.2"
 read_char = "0.1.1"
+serde = { version = "1.0.166", features = ["derive"] }
+serde_yaml = "0.9.22"
 termios = "0.3.3"
+xdg = "2.5.0"

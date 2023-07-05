@@ -1,9 +1,18 @@
+mod setup;
+
 use clap::Parser;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
     #[arg(long, default_value_t = false)]
+    setup: bool,
+}
+
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+pub struct Config {
     secure: bool,
 }
 
@@ -11,10 +20,11 @@ use termios::*;
 
 use ansi_escapes;
 
-use colorful::Colorful;
-//use colorful::Color;
+use colored::*;
 
 use read_char::read_next_char;
+
+use xdg;
 
 use std::fs::File;
 use std::io::stdin;
@@ -105,10 +115,44 @@ where
     write!(tty, "{}", ansi_escapes::CursorShow).unwrap();
 }
 
-fn main() {
-    let mut tty = File::create("/dev/tty").unwrap();
+fn get_config() -> Option<Config> {
+    let some_config_path = xdg::BaseDirectories::new()
+        .unwrap()
+        .find_config_file("sudo-askpass.yml");
 
+    if some_config_path.is_none() {
+        return None;
+    }
+
+    let some_config_string = std::fs::read_to_string(some_config_path.unwrap());
+
+    if some_config_string.is_err() {
+        return None;
+    }
+
+    serde_yaml::from_str(some_config_string.unwrap().as_str()).ok()
+}
+
+fn main() {
     let args = Args::parse();
+
+    if args.setup {
+        setup::setup();
+        return;
+    }
+
+    let config = get_config();
+
+    if config.is_none() {
+        setup::setup();
+        return;
+    }
+
+    let config = config.unwrap();
+
+    let secure = config.secure;
+
+    let mut tty = File::create("/dev/tty").unwrap();
 
     let mut termios_wrapper = TermiosWrapper::new();
     termios_wrapper.raw();
@@ -116,9 +160,9 @@ fn main() {
     let mut password: String = String::new();
 
     let spinner = Spinner {
-        characters: vec!['1', '2', '3', '4'],
-        empty: 'e',
-        secure: 'V',
+        characters: MOON_SPINNER_CHARACTERS.to_vec(),
+        empty: '󱃓',
+        secure: '󰦝',
         offset: 4,
     };
 
@@ -139,7 +183,7 @@ fn main() {
             '\n' => break,
             '\x7F' => {
                 // backspace
-                if password.pop().is_some() && !args.secure {
+                if password.pop().is_some() && !secure {
                     write!(tty, "{}", ansi_escapes::CursorBackward(1)).unwrap();
                     write!(tty, " ").unwrap();
                     write!(tty, "{}", ansi_escapes::CursorBackward(1)).unwrap();
@@ -166,7 +210,7 @@ fn main() {
             character => {
                 password.push(character);
 
-                if !args.secure {
+                if !secure {
                     write!(tty, "*").unwrap();
 
                     spin(
@@ -201,40 +245,31 @@ struct Spinner {
     offset: usize,
 }
 
-//const SPINNER_CHARACTERS: [&str; SPINNER_CHARACTERS_SIZE] = [
-//    "󰪞",
-//    "󰪟",
-//    "󰪠",
-//    "󰪡",
-//    "󰪢",
-//    "󰪣",
-//    "󰪤",
-//    "󰪥"
-//];
+const CLOCK_SPINNER_CHARACTERS: [char; 8] = ['󰪞', '󰪟', '󰪠', '󰪡', '󰪢', '󰪣', '󰪤', '󰪥'];
 
-//const SPINNER_CHARACTERS: [&str; 24] = [
-//    "", // 6
-//    "", // 5
-//    "", // 4
-//    "", // 3
-//    "", // 2
-//    "", // 1
-//    "", // 6
-//    "", // 5
-//    "", // 4
-//    "", // 3
-//    "", // 2
-//    "", // 1
-//    "", // 6
-//    "", // 5
-//    "", // 4
-//    "", // 3
-//    "", // 2
-//    "", // 1
-//    "", // 6
-//    "", // 5
-//    "", // 4
-//    "", // 3
-//    "", // 2
-//    "", // 1
-//];
+const MOON_SPINNER_CHARACTERS: [char; 24] = [
+    '', // 6
+    '', // 5
+    '', // 4
+    '', // 3
+    '', // 2
+    '', // 1
+    '', // 6
+    '', // 5
+    '', // 4
+    '', // 3
+    '', // 2
+    '', // 1
+    '', // 6
+    '', // 5
+    '', // 4
+    '', // 3
+    '', // 2
+    '', // 1
+    '', // 6
+    '', // 5
+    '', // 4
+    '', // 3
+    '', // 2
+    '', // 1
+];
