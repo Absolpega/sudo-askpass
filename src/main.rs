@@ -1,3 +1,4 @@
+mod ansi;
 mod setup;
 
 use clap::Parser;
@@ -16,11 +17,39 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, PartialEq, Serialize, Deserialize, Clone)]
 pub struct Config {
     secure: bool,
+    prompt: Prompt,
 }
 
 impl Default for Config {
     fn default() -> Self {
-        Self { secure: false }
+        Self {
+            secure: false,
+            prompt: Prompt::default(),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Serialize, Deserialize, Clone)]
+struct Prompt {
+    icons_ansi_color: u8,
+    prompt_ansi_color: u8,
+    characters: Vec<char>,
+    empty: char,
+    secure: char,
+    prompt_text: String,
+}
+
+impl Default for Prompt {
+    fn default() -> Self {
+        //offset: prompt_str.chars().count() - prompt_str.chars().position(|c| c == '$').unwrap(),
+        Self {
+            icons_ansi_color: 36,
+            prompt_ansi_color: 33,
+            characters: MOON_SPINNER_CHARACTERS.to_vec(),
+            empty: '󱃓',
+            secure: '󰦝',
+            prompt_text: "Enter password < $ > ".to_string(),
+        }
     }
 }
 
@@ -77,26 +106,34 @@ enum SpinType {
     Secure,
 }
 
-fn spin<T>(way: SpinType, tty: &mut File, iter: &mut Cycle<T>, password: &String, spinner: &Spinner)
+fn spin<T>(way: SpinType, tty: &mut File, iter: &mut Cycle<T>, password: &String, prompt: &Prompt)
 where
     T: Iterator<Item = char>,
     T: Clone,
 {
-    let mut offset = spinner.offset + password.chars().count();
+    let spinner_offset = ansi::strip_ansi_codes(prompt.prompt_text.as_str())
+        .chars()
+        .count()
+        - ansi::strip_ansi_codes(prompt.prompt_text.as_str())
+            .chars()
+            .position(|c| c == '$')
+            .unwrap();
+
+    let mut offset = spinner_offset + password.chars().count();
 
     if way == SpinType::Secure {
-        offset = spinner.offset;
+        offset = spinner_offset;
     }
 
     if way == SpinType::Backward {
-        for _ in 1..spinner.characters.len() - 1 {
+        for _ in 1..prompt.characters.len() - 1 {
             iter.next();
         }
     }
 
     let some_icon: Option<char> = match way {
-        SpinType::Secure => Some(spinner.secure),
-        SpinType::Empty => Some(spinner.empty),
+        SpinType::Secure => Some(prompt.secure),
+        SpinType::Empty => Some(prompt.empty),
         _ => None,
     };
 
@@ -109,15 +146,14 @@ where
     )
     .unwrap();
 
-    write!(
-        tty,
-        "{}",
-        some_icon
-            .unwrap_or_else(|| iter.next().unwrap())
-            .to_string()
-            .cyan()
-    )
-    .unwrap();
+    let mut icon = some_icon
+        .unwrap_or_else(|| iter.next().unwrap())
+        .to_string();
+
+    icon.insert_str(0, format!("\x1B[{}m", prompt.icons_ansi_color).as_str());
+    icon.push_str("\x1B[0m");
+
+    write!(tty, "{}", icon).unwrap();
 
     write!(tty, "{}", ansi_escapes::CursorRestorePosition).unwrap();
     write!(tty, "{}", ansi_escapes::CursorShow).unwrap();
@@ -164,12 +200,15 @@ fn main() {
 
     let mut password: String = String::new();
 
-    let spinner = Spinner {
-        characters: MOON_SPINNER_CHARACTERS.to_vec(),
-        empty: '󱃓',
-        secure: '󰦝',
-        offset: 4,
-    };
+    //let spinner = Prompt {
+    //    characters: MOON_SPINNER_CHARACTERS.to_vec(),
+    //    empty: '󱃓',
+    //    secure: '󰦝',
+    //    offset: 4,
+    //    prompt_text: "Enter password < S > ".to_string().yellow().to_string(),
+    //};
+
+    let spinner = config.prompt;
 
     let mut spinner_iter = spinner.characters.clone().into_iter().cycle();
 
@@ -182,7 +221,11 @@ fn main() {
         .unwrap();
     }
 
-    write!(tty, "{}", String::from("Enter password < S > ").yellow()).unwrap();
+    let mut text = spinner.prompt_text.clone();
+    text.insert_str(0, format!("\x1B[{}m", spinner.prompt_ansi_color).as_str());
+    text.push_str("\x1B[0m");
+
+    write!(tty, "{}", text).unwrap();
 
     spin(
         SpinType::Empty,
@@ -250,13 +293,6 @@ fn main() {
     write!(tty, "\n").unwrap();
 
     write!(stdout(), "{}\n", password).unwrap();
-}
-
-struct Spinner {
-    characters: Vec<char>,
-    empty: char,
-    secure: char,
-    offset: usize,
 }
 
 const CLOCK_SPINNER_CHARACTERS: [char; 8] = ['󰪞', '󰪟', '󰪠', '󰪡', '󰪢', '󰪣', '󰪤', '󰪥'];

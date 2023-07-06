@@ -1,14 +1,67 @@
 use std::io::Write;
 
-use inquire::Confirm;
+use inquire::{Confirm, CustomType, Text};
 
 use crate::Config;
 
 pub fn setup() {
-    let mut config = Config { secure: false };
+    let mut config = Config::default();
 
-    config.secure = !Confirm::new("Show * for characters when prompting?")
-        .with_default(!config.secure)
+    config.secure = Confirm::new("Enable secure option?")
+        .with_help_message(
+            "When on will not show * for characters, spinner will only show when empty.",
+        )
+        .with_default(config.secure)
+        .prompt()
+        .unwrap();
+
+    config.prompt.icons_ansi_color = CustomType::new("Color of spinner")
+        .with_error_message("Must be a number")
+        .with_help_message("https://en.wikipedia.org/wiki/ANSI_escape_code#3-bit_and_4-bit")
+        .with_default(config.prompt.icons_ansi_color)
+        .prompt()
+        .unwrap();
+
+    config.prompt.prompt_ansi_color = CustomType::new("Color of prompt")
+        .with_error_message("Must be a number")
+        .with_help_message("https://en.wikipedia.org/wiki/ANSI_escape_code#3-bit_and_4-bit")
+        .with_default(config.prompt.prompt_ansi_color)
+        .prompt()
+        .unwrap();
+
+    config.prompt.characters = Text::new("Spinner icons")
+        .with_help_message("Can be separated by comma, space or not at all.")
+        .with_default(
+            config
+                .prompt
+                .characters
+                .into_iter()
+                .collect::<String>()
+                .as_str(),
+        )
+        .prompt()
+        .unwrap()
+        .chars()
+        .filter(|&c| c != ',' && c != ' ')
+        .collect();
+
+    config.prompt.empty = CustomType::new("Spinner icon for when input is empty")
+        .with_error_message("Must be a single character")
+        .with_help_message("Must be a single character")
+        .with_default(config.prompt.empty)
+        .prompt()
+        .unwrap();
+
+    config.prompt.secure = CustomType::new("Spinner icon for secure")
+        .with_error_message("Must be a single character")
+        .with_help_message("Must be a single character")
+        .with_default(config.prompt.secure)
+        .prompt()
+        .unwrap();
+
+    config.prompt.prompt_text = Text::new("The prompt itself")
+        .with_help_message("Use $ to specify placement of spinner")
+        .with_default(config.prompt.prompt_text.as_str())
         .prompt()
         .unwrap();
 
