@@ -7,6 +7,17 @@ use crate::Config;
 pub fn setup() {
     let mut config = Config::default();
 
+    println!(
+        r#"
+    I recommend putting sudo-askpass into a folder that is in your PATH
+        `cp target/release/sudo-askpass /usr/local/bin/sudo-askpass`
+    In order to make sudo use sudo-askpass you need to
+        `export SUDO_ASKPASS=/usr/local/bin/sudo-askpass`
+    and launch sudo with `sudo -A`
+        `alias sudo='sudo -A'`
+    "#
+    );
+
     config.secure = Confirm::new("Enable secure option?")
         .with_help_message(
             "When on will not show * for characters, spinner will only show when empty.",
