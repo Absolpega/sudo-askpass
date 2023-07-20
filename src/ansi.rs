@@ -242,6 +242,7 @@ impl<'a> AnsiCodeIterator<'a> {
         }
     }
 
+    /* unused, scared to delete forever
     /// Returns the string slice up to the current match.
     pub fn current_slice(&self) -> &str {
         &self.s[..self.cur_idx]
@@ -251,6 +252,7 @@ impl<'a> AnsiCodeIterator<'a> {
     pub fn rest_slice(&self) -> &str {
         &self.s[self.cur_idx..]
     }
+    */
 }
 
 impl<'a> Iterator for AnsiCodeIterator<'a> {

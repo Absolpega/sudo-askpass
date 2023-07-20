@@ -2,6 +2,17 @@
 name = "sudo-askpass"
 version = "2.2.0"
 edition = "2021"
+description = "A sudo askpasss so inputting your password isn't boring"
+readme = "README.md"
+homepage = "https://github.com/absolpega/sudo-askpass"
+repository = "https://github.com/absolpega/sudo-askpass"
+license = "MIT"
+keywords = ["sudo", "askpass", "cli", "password"]
+categories = [
+    "command-line-utilities",
+    "command-line-interface",
+    "authentication",
+]
 
 [dependencies]
 ansi-escapes = "0.1.1"

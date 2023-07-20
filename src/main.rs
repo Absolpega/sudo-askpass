@@ -6,7 +6,10 @@ use clap::Parser;
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
-    _prompt: Option<String>,
+    prompt: Option<String>,
+
+    #[arg(trailing_var_arg = true, num_args(0..))]
+    _ingore_rest: Option<String>,
 
     #[arg(long, default_value_t = false)]
     setup: bool,
@@ -14,12 +17,13 @@ struct Args {
 
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, PartialEq, Serialize, Deserialize, Clone)]
+#[derive(Debug, PartialEq, Serialize, Deserialize, Clone, Default)]
 pub struct Config {
     secure: bool,
     prompt: Prompt,
 }
 
+/*
 impl Default for Config {
     fn default() -> Self {
         Self {
@@ -28,6 +32,7 @@ impl Default for Config {
         }
     }
 }
+*/
 
 #[derive(Debug, PartialEq, Serialize, Deserialize, Clone)]
 struct Prompt {
@@ -55,17 +60,12 @@ impl Default for Prompt {
 
 use termios::*;
 
-use ansi_escapes;
-
 use colored::*;
 
 use read_char::read_next_char;
 
-use xdg;
-
 use std::fs::File;
 use std::io::stdin;
-use std::io::stdout;
 use std::io::Write;
 use std::iter::Cycle;
 use std::os::fd::AsRawFd;
@@ -79,10 +79,10 @@ impl TermiosWrapper {
     fn new() -> Self {
         let mut termios: Termios = Termios::from_fd(stdin().as_raw_fd()).unwrap();
         tcgetattr(stdin().as_raw_fd(), &mut termios).unwrap();
-        return Self {
-            orig_termios: termios.clone(),
+        Self {
+            orig_termios: termios,
             termios,
-        };
+        }
     }
     fn raw(&mut self) {
         tcgetattr(stdin().as_raw_fd(), &mut self.termios).unwrap();
@@ -106,7 +106,7 @@ enum SpinType {
     Secure,
 }
 
-fn spin<T>(way: SpinType, tty: &mut File, iter: &mut Cycle<T>, password: &String, prompt: &Prompt)
+fn spin<T>(way: SpinType, tty: &mut File, iter: &mut Cycle<T>, password: &str, prompt: &Prompt)
 where
     T: Iterator<Item = char>,
     T: Clone,
@@ -162,13 +162,9 @@ where
 fn get_config() -> Option<Config> {
     let some_config_path = xdg::BaseDirectories::new()
         .unwrap()
-        .find_config_file("sudo-askpass.yml");
+        .find_config_file("sudo-askpass.yml")?;
 
-    if some_config_path.is_none() {
-        return None;
-    }
-
-    let some_config_string = std::fs::read_to_string(some_config_path.unwrap());
+    let some_config_string = std::fs::read_to_string(some_config_path);
 
     if some_config_string.is_err() {
         return None;
@@ -200,14 +196,6 @@ fn main() {
 
     let mut password: String = String::new();
 
-    //let spinner = Prompt {
-    //    characters: MOON_SPINNER_CHARACTERS.to_vec(),
-    //    empty: '󱃓',
-    //    secure: '󰦝',
-    //    offset: 4,
-    //    prompt_text: "Enter password < S > ".to_string().yellow().to_string(),
-    //};
-
     let spinner = config.prompt;
 
     let mut spinner_iter = spinner.characters.clone().into_iter().cycle();
@@ -222,6 +210,11 @@ fn main() {
     }
 
     let mut text = spinner.prompt_text.clone();
+
+    if args.prompt.is_some() && !args.prompt.clone().unwrap_or_default().contains("sudo") {
+        text = args.prompt.unwrap() + "< $ > ";
+    }
+
     text.insert_str(0, format!("\x1B[{}m", spinner.prompt_ansi_color).as_str());
     text.push_str("\x1B[0m");
 
@@ -290,12 +283,12 @@ fn main() {
         }
     }
 
-    write!(tty, "\n").unwrap();
+    writeln!(tty).unwrap();
 
-    write!(stdout(), "{}\n", password).unwrap();
+    println!("{}", password);
 }
 
-const CLOCK_SPINNER_CHARACTERS: [char; 8] = ['󰪞', '󰪟', '󰪠', '󰪡', '󰪢', '󰪣', '󰪤', '󰪥'];
+//const CLOCK_SPINNER_CHARACTERS: [char; 8] = ['󰪞', '󰪟', '󰪠', '󰪡', '󰪢', '󰪣', '󰪤', '󰪥'];
 
 const MOON_SPINNER_CHARACTERS: [char; 24] = [
     '', // 6
